@@ -1,3 +1,4 @@
 {
-  "id": "agent-keep-awake"
+  "id": "agent-keep-awake",
+  "requirements": { "paseo": ">=0.8.0" }
 }

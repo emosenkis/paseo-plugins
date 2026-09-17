@@ -4,11 +4,11 @@
   "type": "module",
   "version": "0.0.0",
   "scripts": {
-    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "test": "node --test --experimental-strip-types server/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.7.2",
+    "@getpaseo/plugin": "0.8.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^24.10.1",
     "@types/react": "~19.2.0",

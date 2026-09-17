@@ -6,3 +6,21 @@ export function inhibitorCommand(platform: "darwin" | "linux" | "win32") {
   }
   return ["systemd-inhibit", ["--what=idle:sleep", "--why=Paseo agent is running", "--mode=block", "sleep", "infinity"]] as const;
 }
+
+export function createMonitor(start: () => void, stop: () => void) {
+  const active = new Set<string>();
+  return {
+    started(agentId: string) {
+      const wasIdle = active.size === 0;
+      active.add(agentId);
+      if (wasIdle) start();
+    },
+    ended(agentId: string) {
+      if (active.delete(agentId) && active.size === 0) stop();
+    },
+    cleanup() {
+      active.clear();
+      stop();
+    },
+  };
+}
