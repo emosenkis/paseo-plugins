@@ -2,7 +2,7 @@
   "servers": {
     "typescript": {
       "command": "pnpx",
-      "args": ["--package=typescript@5.9.3", "--package=typescript-language-server@5.3.0", "typescript-language-server", "--stdio"],
+      "args": ["--package=typescript@latest", "--package=typescript-language-server@latest", "typescript-language-server", "--stdio"],
       "languages": {
         "ts": "typescript",
         "tsx": "typescriptreact",
@@ -16,7 +16,7 @@
     },
     "python": {
       "command": "pnpx",
-      "args": ["--package=basedpyright@1.40.2", "basedpyright-langserver", "--stdio"],
+      "args": ["--package=basedpyright@latest", "basedpyright-langserver", "--stdio"],
       "languages": { "py": "python", "pyi": "python" }
     }
   }

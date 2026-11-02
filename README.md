@@ -29,7 +29,7 @@ paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/agen
 Native code navigation for Paseo's file editor. See [the plugin overview](plugins/lsp/OVERVIEW.md)
 for configuration and supported language servers.
 
-This checkout's `.paseo/lsp.json` launches pinned TypeScript and Python language servers
+This checkout's `.paseo/lsp.json` launches the latest TypeScript and Python language servers
 through `pnpx`. Install pnpm on the daemon host; pnpx downloads the packages on first use.
 
 Copied from [Covered-Health/paseo-plugins](https://github.com/Covered-Health/paseo-plugins) at
