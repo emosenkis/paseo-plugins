@@ -1,8 +1,8 @@
 {
   "servers": {
     "typescript": {
-      "command": "./plugins/lsp/node_modules/.bin/typescript-language-server",
-      "args": ["--stdio"],
+      "command": "pnpx",
+      "args": ["--package=typescript@5.9.3", "--package=typescript-language-server@5.3.0", "typescript-language-server", "--stdio"],
       "languages": {
         "ts": "typescript",
         "tsx": "typescriptreact",
@@ -15,8 +15,8 @@
       }
     },
     "python": {
-      "command": "./plugins/lsp/node_modules/.bin/basedpyright-langserver",
-      "args": ["--stdio"],
+      "command": "pnpx",
+      "args": ["--package=basedpyright@1.40.2", "basedpyright-langserver", "--stdio"],
       "languages": { "py": "python", "pyi": "python" }
     }
   }
