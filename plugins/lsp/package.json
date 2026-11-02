@@ -11,6 +11,7 @@
     "index.client.tsx",
     "index.server.ts",
     "client/",
+    "examples/",
     "server/",
     "shared/"
   ],

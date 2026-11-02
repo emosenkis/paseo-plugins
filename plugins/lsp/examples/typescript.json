@@ -1,0 +1,18 @@
+{
+  "servers": {
+    "typescript": {
+      "command": "pnpx",
+      "args": ["--package=typescript@6", "--package=typescript-language-server@latest", "typescript-language-server", "--stdio"],
+      "languages": {
+        "ts": "typescript",
+        "tsx": "typescriptreact",
+        "js": "javascript",
+        "jsx": "javascriptreact",
+        "mjs": "javascript"
+      },
+      "initializationOptions": {
+        "tsserver": { "path": "tsserver", "useSyntaxServer": "never" }
+      }
+    }
+  }
+}
