@@ -9,17 +9,18 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
+        plugin: [plugins/agent-keep-awake, plugins/lsp]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: plugins/agent-keep-awake
+        working-directory: ${{ matrix.plugin }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: plugins/agent-keep-awake/package-lock.json
+          cache-dependency-path: ${{ matrix.plugin }}/package-lock.json
       - run: npm ci
       - run: npm test
       - run: npm run typecheck

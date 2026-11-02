@@ -1,0 +1,45 @@
+{
+  "name": "lsp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "files": [
+    "LICENSE",
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "ARCHITECTURE.md",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts",
+    "browser-harness": "node tests/harness.ts"
+  },
+  "dependencies": {
+    "@codemirror/state": "6.7.1",
+    "@codemirror/view": "6.43.6",
+    "@lezer/highlight": "1.2.5",
+    "@lezer/javascript": "1.5.6",
+    "@lezer/python": "1.1.19",
+    "vscode-jsonrpc": "9.0.3"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.11.2",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^26.6.4",
+    "@types/react": "~19.2.0",
+    "@types/react-dom": "~19.2.0",
+    "basedpyright": "^1.40.2",
+    "esbuild": "^0.27.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "typescript-language-server": "5.3.0",
+    "zod": "^4.4.3"
+  }
+}
