@@ -31,6 +31,8 @@ for configuration and supported language servers.
 
 This checkout's `.paseo/lsp.json` launches the latest TypeScript and Python language servers
 through `pnpx`. Install pnpm on the daemon host; pnpx downloads the packages on first use.
+The TypeScript server uses the latest TypeScript 6 release because TypeScript 7 no longer
+ships the `tsserver` it requires. The explicit `tsserver` path resolves from pnpx's environment.
 
 Copied from [Covered-Health/paseo-plugins](https://github.com/Covered-Health/paseo-plugins) at
 `dbe3e19baec869509690537f3e3cd8fe5adb972f`. Copyright (c) 2026 Protego Health; MIT licensed.
