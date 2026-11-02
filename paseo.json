@@ -1,0 +1,5 @@
+{
+  "worktree": {
+    "setup": "npm ci --prefix plugins/agent-keep-awake && npm ci --prefix plugins/lsp"
+  }
+}
