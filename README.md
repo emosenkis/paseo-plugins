@@ -29,6 +29,16 @@ paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/agen
 Code navigation, autocomplete, and symbol rename for Paseo's file editor. See [the plugin overview](plugins/lsp/OVERVIEW.md)
 for configuration and supported language servers.
 See [example configurations](plugins/lsp/examples/README.md) for a ready-to-use TypeScript setup.
+Use **Restart LSP servers** in the Command Center after changing server tooling.
+
+![References and jump history](plugins/lsp/assets/screenshots/navigation.png)
+
+More screenshots: [autocomplete](plugins/lsp/assets/screenshots/autocomplete.png),
+[diagnostics](plugins/lsp/assets/screenshots/diagnostics.png),
+[hover documentation](plugins/lsp/assets/screenshots/hover.png),
+[signature help](plugins/lsp/assets/screenshots/signature.png),
+[rename review](plugins/lsp/assets/screenshots/rename.png), and
+[restart servers](plugins/lsp/assets/screenshots/restart.png).
 
 This checkout's `.paseo/lsp.json` launches the latest TypeScript and Python language servers
 through `pnpx`. Install pnpm on the daemon host; pnpx downloads the packages on first use.

@@ -4,7 +4,7 @@
 
 Use Paseo’s existing file editor, file browser and native file tabs. The separate replacement editor has been deleted. Lack of a supported plugin API is a maintenance constraint, not evidence that injection is impossible.
 
-The earlier read-only and replacement-editor prototypes were removed. The plugin now uses the directory and installation ID `lsp`; it adds a Navigation results panel and leaves editing, saving and file tabs to Paseo.
+The earlier read-only and replacement-editor prototypes were removed. The plugin now uses the directory and installation ID `lsp`; it adds a Refs results panel and leaves editing, saving and file tabs to Paseo.
 
 ## What the live app proved
 
@@ -25,7 +25,7 @@ The probe and its logging RPC were removed afterwards. Production code contains 
 - The adapter reads the native cursor and all mounted native buffers in that host/workspace. Duplicate source buffers use the focused source text. Conflicting copies of another file fail explicitly rather than silently choosing an unsaved version.
 - Validated plugin RPC resolves the workspace on the daemon and reads `.paseo/lsp.json` and selects the most specific directory-scoped stdio language server profile by extension. Persistent sessions synchronize didOpen/didChange/didClose and document versions. TypeScript’s syntax-only fallback is disabled so navigation uses semantic project analysis.
 - Microsoft vscode-jsonrpc handles framing and correlation. Both supported language servers use UTF-16 coordinates. Server-originated edits are rejected.
-- Definition and LocationLink results become workspace-relative paths and exact ranges. Results, progress and errors publish to an in-memory store keyed by host/workspace. A supported workspace panel registered at `locations: ["explorer"]` renders the Navigation tab in the right sidebar; `client.openPanel` reveals it only for multiple results. A single result opens directly. Empty results and errors use Paseo’s supported toast/butter-bar API without selecting the panel. Result clicks retain native file navigation. There is no floating results UI or custom context menu.
+- Definition and LocationLink results become workspace-relative paths and exact ranges. Results, progress and errors publish to an in-memory store keyed by host/workspace. A supported workspace panel registered at `locations: ["explorer"]` renders the Refs tab in the right sidebar; `client.openPanel` reveals it only for multiple results. A single result opens directly. Empty results and errors use Paseo’s supported toast/butter-bar API without selecting the panel. Result clicks retain native file navigation. There is no floating results UI or custom context menu.
 - The adapter calls the pane’s native `openFileInWorkspace` with the target and line range. It waits for the destination editor, then dispatches a plain selection transaction and focuses it. Existing native file-opening paths continue to work unchanged.
 - Pane lookup checks private shapes at runtime. Unknown editors/hosts are not intercepted. Disposal removes DOM listeners and workspace results, cancels pending destination waits and releases language sessions. Request deadlines, idle eviction and plugin shutdown terminate server processes; POSIX process groups include children.
 
@@ -43,7 +43,7 @@ Signature help uses `textDocument/signatureHelp` after a focused caret/document 
 
 F2 requests `textDocument/prepareRename` when supported, then displays an accessible modal name input. The explicit `editor.rename` RPC synchronizes native buffers and requests `textDocument/rename`. Both `changes` and versioned `documentChanges` text-edit forms are validated; resource operations, external paths, duplicate targets, stale versions, invalid/overlapping ranges and excess payloads fail the whole request. Unsolicited `workspace/applyEdit` remains rejected.
 
-The adapter opens every target in native tabs, checks the returned source snapshots, then recomputes the rename with all mounted buffers. For a cross-file rename, a confirmation dialog shows each proposed diff and can open a workspace diff tab. Cancel makes no edits; confirmation checks that the same editor copies and document snapshots remain before synchronous CodeMirror transactions apply any text edits. Targets newly introduced by the second response cause a retry instead of a partial rename. Changes remain unsaved and use each editor's existing history; there is no workspace-wide undo or atomic transaction across editors. Plugin disposal cancels the name input, review and pending file opens. The server's project analysis determines which references are included.
+The adapter opens every target in native tabs, checks the returned source snapshots, then recomputes the rename with all mounted buffers. For a cross-file rename, a confirmation dialog shows each proposed diff and can open a workspace diff tab. Cancel makes no edits; confirmation checks that the same editor copies and document snapshots remain before synchronous CodeMirror transactions apply any text edits. Targets newly introduced by the second response cause a retry instead of a partial rename. Changes use each editor's existing history and normal saving behavior, including host autosave; there is no workspace-wide undo or atomic transaction across editors. Plugin disposal cancels the name input, review and pending file opens. The server's project analysis determines which references are included.
 
 ## Completion
 
@@ -73,7 +73,7 @@ A ty profile may use `command: "ty"`, `args: ["server"]`, and `languages: { "py"
 
 ## Scope and limits
 
-Private coupling is isolated in `client/native.ts`: the `__reactFiber$` DOM key, native source selector, pane-context shape and native file-open request shape. No Paseo application checkout was modified. This was tested on 0.11.2; future updates may require changes. The plugin's sidebar item mounts the host-scoped adapter, so its selected host and visibility affect activation.
+Private pane and editor lookup lives in `client/native.ts`: the `__reactFiber$` DOM key, native source selector, CodeMirror DOM tile, pane-context shape and native file-open request shape. Autocomplete also depends on Metro module discovery in `client/metro.ts` and `client/completion.ts`. No Paseo application checkout was modified. This was tested on 0.11.2; future updates may require changes. The plugin's sidebar item mounts the host-scoped adapter, so its selected host and visibility affect activation.
 
 Paseo owns dirty-buffer retention. The plugin supplies mounted buffers; other files come from the server’s disk view. Servers requiring client-driven file watchers are not supported yet. Workspace-external locations are omitted, with no traversal or reading of those targets. Limits: 30 buffers, 2 MiB per buffer, 8 MiB total, 500 unique targets, 30-second request deadline and five-minute idle eviction. Windows lacks the POSIX process-group termination behavior. Mobile is not supported.
 
@@ -81,7 +81,7 @@ Paseo owns dirty-buffer retention. The plugin supplies mounted buffers; other fi
 
 `npm run typecheck` and `npm test` run the host checks, including real TypeScript and basedpyright sessions, scope/CWD/root verification, buffer isolation and config reload/failure behavior. `npm run browser-harness -- <workspace-id>` starts a development-only loopback fixture host. At its printed URL, run `await window.proof.runChecks()` to exercise the adapter through React-owned native-shaped panes and live daemon RPCs. The browser fixture validates opening callbacks, target selections, Python usages and unsaved buffers, Cmd-click handling, native context-menu preservation, panel opening, empty/error states, unknown-editor guards and listener cleanup. Diagnostics, hover and signature checks are exposed separately as `window.proof.diagnosticsChecks()`, `hoverChecks()` and `signatureChecks()`. The automated webview is in the background, so signature checks simulate document focus while exercising real LSP requests and cursor behavior. This harness does not replace the separate live-app navigation proof described above.
 
-The local HTTP harness is not shipped, validates its HTTP origin/workspace, and exposes only this plugin's lookup/inspect/release RPCs. The installed plugin needs no HTTP service.
+The local HTTP harness is not shipped, validates its HTTP origin/workspace, and exposes only this plugin's rename/lookup/inspect/release RPCs. The installed plugin needs no HTTP service.
 
 ## References
 

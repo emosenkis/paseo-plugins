@@ -14,7 +14,8 @@
     "examples/",
     "server/",
     "shared/",
-    "scripts/"
+    "scripts/",
+    "assets/"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",

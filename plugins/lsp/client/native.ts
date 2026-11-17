@@ -208,7 +208,7 @@ export class NativeNavigation {
       for (const item of transactions) if (!item.binding.element.isConnected || item.binding.view.state.doc !== item.doc) throw new Error('A rename target changed. Retry rename.');
       for (const { binding, changes } of transactions) binding.view.dispatch({ changes, userEvent: 'input.rename' });
       source.view.focus();
-      this.notify(`Renamed in ${result.files.length} file(s). Changes are unsaved; undo is per file.`);
+      this.notify(`Renamed in ${result.files.length} file(s). Undo is per file.`);
     } catch (error) { if (!this.stopped) this.notify(error instanceof Error ? error.message : String(error), true); }
     finally { this.busy = false; }
   }
