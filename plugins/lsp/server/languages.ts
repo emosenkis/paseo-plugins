@@ -4,14 +4,25 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { setTimeout, clearTimeout, setInterval, clearInterval } from 'node:timers';
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter, ResponseError, ErrorCodes } from 'vscode-jsonrpc/node';
 import { z } from 'zod';
-import { buffer, point, range, type Target, positionOffset, diagnostic, type Inspection } from '../shared/contracts.ts';
+import { buffer, point, range, type Target, positionOffset, diagnostic, type Inspection, type RenameResult } from '../shared/contracts.ts';
 import { readConfig, selectServer, CONFIG_FILE, type ScopedServer } from './config.ts';
 import { extname } from 'node:path';
 import { hoverContent, signatureInfo } from './details.ts';
 import { contained, checkedText } from './files.ts';
+import { renameFiles } from './rename.ts';
 
 const provider = z.union([z.boolean(), z.record(z.string(), z.unknown())]);
-const initialization = z.object({ capabilities: z.object({ positionEncoding: z.string().optional(), definitionProvider: provider.optional(), referencesProvider: provider.optional(), diagnosticProvider: provider.optional(), hoverProvider: provider.optional(), signatureHelpProvider: provider.optional() }) });
+const initialization = z.object({ capabilities: z.object({ positionEncoding: z.string().optional(), definitionProvider: provider.optional(), referencesProvider: provider.optional(), diagnosticProvider: provider.optional(), hoverProvider: provider.optional(), signatureHelpProvider: provider.optional(), completionProvider: provider.optional(), renameProvider: provider.optional() }) });
+const completionItem = z.object({ label: z.string().max(8000), insertText: z.string().max(32000).optional(), insertTextFormat: z.number().optional(), detail: z.string().max(8000).optional(), textEdit: z.object({ newText: z.string().max(32000), range }).optional(), additionalTextEdits: z.array(z.unknown()).optional(), command: z.unknown().optional() });
+export function completionItems(value: unknown) {
+  const response = z.union([z.null(), z.array(z.unknown()), z.object({ items: z.array(z.unknown()) })]).parse(value);
+  const items = response === null ? [] : Array.isArray(response) ? response : response.items;
+  return items.flatMap(value => {
+    const item = completionItem.safeParse(value);
+    if (!item.success || item.data.insertTextFormat === 2 || item.data.additionalTextEdits?.length || item.data.command) return [];
+    return [{ label: item.data.label, insertText: item.data.textEdit?.newText ?? item.data.insertText ?? item.data.label, range: item.data.textEdit?.range, detail: item.data.detail }];
+  }).slice(0, 500);
+}
 const location = z.object({ uri: z.string(), range });
 const link = z.object({ targetUri: z.string(), targetRange: range, targetSelectionRange: range });
 const locations = z.union([z.null(), location, z.array(z.union([location, link]))]);
@@ -81,7 +92,7 @@ class Session {
       const response = initialization.parse(await connection.sendRequest('initialize', {
         processId: process.pid, rootUri: pathToFileURL(root).href,
         workspaceFolders: [{ uri: pathToFileURL(root).href, name: root }],
-        capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true }, window: { workDoneProgress: true }, textDocument: { definition: { linkSupport: true }, references: {}, hover: { contentFormat: ['markdown', 'plaintext'] }, signatureHelp: { contextSupport: true, signatureInformation: { documentationFormat: ['plaintext', 'markdown'], parameterInformation: { labelOffsetSupport: true }, activeParameterSupport: true } }, publishDiagnostics: { versionSupport: true }, diagnostic: { dynamicRegistration: false } } },
+        capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, workspaceEdit: { documentChanges: true } }, window: { workDoneProgress: true }, textDocument: { definition: { linkSupport: true }, references: {}, rename: { prepareSupport: true }, hover: { contentFormat: ['markdown', 'plaintext'] }, signatureHelp: { contextSupport: true, signatureInformation: { documentationFormat: ['plaintext', 'markdown'], parameterInformation: { labelOffsetSupport: true }, activeParameterSupport: true } }, publishDiagnostics: { versionSupport: true }, diagnostic: { dynamicRegistration: false } } },
         initializationOptions: config.initializationOptions,
       }));
       if (response.capabilities.positionEncoding && response.capabilities.positionEncoding !== 'utf-16') throw new Error('Language server selected an unsupported position encoding. UTF-16 is required.');
@@ -90,7 +101,7 @@ class Session {
     })();
     void this.ready.catch(() => {});
   }
-  query(files: { absolute: string; text: string; languageId: string }[], absolute: string, position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature', timeoutMs: number) {
+  query(files: { absolute: string; text: string; languageId: string }[], absolute: string, position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'rename', timeoutMs: number, newName?: string) {
     const work = this.queue.catch(() => {}).then(async () => {
       if (this.closing) throw new Error('Language server session closed. Retry navigation.');
       this.lastUsed = Date.now();
@@ -117,6 +128,23 @@ class Session {
               this.documents.set(uri, { text: file.text, version: old.version + 1 });
             }
           }
+          if (kind === 'rename') {
+            if (!capabilities.renameProvider) throw new Error('Language server does not support rename.');
+            const params = { textDocument: { uri: pathToFileURL(absolute).href }, position };
+            if (newName === undefined) {
+              const prepare = typeof capabilities.renameProvider === 'object' && capabilities.renameProvider.prepareProvider;
+              if (!prepare) return { files: [] };
+              const result = await this.connection.sendRequest('textDocument/prepareRename', params);
+              if (result === null) throw new Error('This symbol cannot be renamed.');
+              const prepared = z.union([range, z.object({ range, placeholder: z.string() }), z.object({ defaultBehavior: z.literal(true) })]).parse(result);
+              const selection = 'range' in prepared ? prepared.range : 'start' in prepared ? prepared : undefined;
+              const text = files.find(file => file.absolute === absolute)!.text;
+              return { files: [], placeholder: 'placeholder' in prepared ? prepared.placeholder : selection ? text.slice(positionOffset(text, selection.start), positionOffset(text, selection.end)) : undefined };
+            }
+            const result = await this.connection.sendRequest('textDocument/rename', { ...params, newName });
+            return renameFiles(this.root, result, files, this.documents);
+          }
+          if (kind === 'completion') return { diagnostics: [], completions: capabilities.completionProvider ? completionItems(await this.connection.sendRequest('textDocument/completion', { textDocument: { uri: pathToFileURL(absolute).href }, position })) : [] };
           if (kind === 'signature') return { diagnostics: [], signature: capabilities.signatureHelpProvider ? signatureInfo(await this.connection.sendRequest('textDocument/signatureHelp', { textDocument: { uri: pathToFileURL(absolute).href }, position, context: { triggerKind: 1, isRetrigger: false } })) : null };
           if (kind === 'hover') return { diagnostics: [], hover: capabilities.hoverProvider ? hoverContent(await this.connection.sendRequest('textDocument/hover', { textDocument: { uri: pathToFileURL(absolute).href }, position })) : null };
           if (kind === 'diagnostics') {
@@ -168,10 +196,13 @@ export class Languages {
   async lookup(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references', timeoutMs = 30_000) {
     return await this.request(root, editorId, path, buffers, position, kind, timeoutMs) as { targets: Target[]; omitted: number };
   }
-  async inspect(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'diagnostics' | 'hover' | 'signature' = 'diagnostics') {
+  async inspect(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'diagnostics' | 'hover' | 'signature' | 'completion' = 'diagnostics') {
     return await this.request(root, editorId, path, buffers, position, kind, 30_000) as Inspection;
   }
-  private async request(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature', timeoutMs: number): Promise<{ targets: Target[]; omitted: number } | Inspection> {
+  async rename(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, newName?: string) {
+    return await this.request(root, editorId, path, buffers, position, 'rename', 30_000, newName) as RenameResult;
+  }
+  private async request(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'rename', timeoutMs: number, newName?: string): Promise<{ targets: Target[]; omitted: number } | Inspection | RenameResult> {
     if (this.stopped) throw new Error('Editor plugin stopped.');
     root = await realpath(root);
     let servers: ScopedServer[];
@@ -197,14 +228,14 @@ export class Languages {
     positionOffset(active.text, position);
     if (this.stopped) throw new Error('Editor plugin stopped.');
     // Another lookup can reload config while buffer paths are being resolved.
-    if (this.configs.get(root) !== JSON.stringify(servers)) return this.request(root, editorId, path, buffers, position, kind, timeoutMs);
+    if (this.configs.get(root) !== JSON.stringify(servers)) return this.request(root, editorId, path, buffers, position, kind, timeoutMs, newName);
     const key = JSON.stringify([root, editorId, config]);
     let session = this.sessions.get(key);
     if (!session) {
       if (this.sessions.size >= 16) throw new Error('Too many editor language sessions. Close another editor and retry.');
       session = new Session(root, config); this.sessions.set(key, session);
     }
-    try { return await session.query(files, file.absolute, position, kind, timeoutMs); }
+    try { return await session.query(files, file.absolute, position, kind, timeoutMs, newName); }
     catch (error) { if (this.sessions.get(key) === session) this.sessions.delete(key); throw error; }
   }
   private async reconcile(root: string, servers: ScopedServer[]) {
@@ -216,6 +247,9 @@ export class Languages {
       if (session.root === root) { this.sessions.delete(key); closing.push(session.dispose()); }
     }
     await Promise.all(closing);
+  }
+  async restart(root: string) {
+    await this.reconcile(await realpath(root), []);
   }
   async release(root: string, editorId: string) {
     root = await realpath(root);

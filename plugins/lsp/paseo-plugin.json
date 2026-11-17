@@ -1,1 +1,1 @@
-{"id":"lsp","requirements":{"paseo":">=0.11.2"},"build":[["npm","ci","--omit=dev","--ignore-scripts"]]}
+{"id":"lsp","requirements":{"paseo":">=0.11.2"},"build":[["npm","ci","--omit=dev","--ignore-scripts"],["node","scripts/completion-source.cjs"]]}

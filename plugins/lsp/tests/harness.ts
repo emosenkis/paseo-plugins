@@ -7,10 +7,10 @@ import { DaemonClient } from '@getpaseo/client/internal/daemon-client';
 
 const workspaceId = process.argv[2];
 if (!workspaceId) throw new Error('Usage: npm run browser-harness -- <workspace-id>');
-const bundle = await build({ entryPoints: [fileURLToPath(new URL('./browser-entry.ts', import.meta.url))], bundle: true, platform: 'browser', format: 'esm', target: 'es2022', write: false });
+const bundle = await build({ entryPoints: [fileURLToPath(new URL('./browser-entry.ts', import.meta.url))], bundle: true, alias: { 'react-native': 'react-native-web' }, platform: 'browser', format: 'esm', target: 'es2022', write: false });
 const client = new DaemonClient({ url: 'ws://127.0.0.1:6767/ws', clientId: 'lsp-browser-proof', clientType: 'cli', reconnect: { enabled: false } });
 await client.connect();
-const methods: Record<string, string> = { lookup: 'editor.lookup', inspect: 'editor.inspect', release: 'editor.release' };
+const methods: Record<string, string> = { rename: 'editor.rename', lookup: 'editor.lookup', inspect: 'editor.inspect', release: 'editor.release' };
 const server = createServer(async (request, response) => {
   try {
     if (/^\/fixtures\/(symbol|usage)\.(py|ts)$/.test(request.url ?? '')) { response.setHeader('Content-Type', 'text/plain'); response.end(await readFile(new URL('./fixtures/' + request.url!.split('/').at(-1), import.meta.url))); return; }

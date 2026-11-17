@@ -1,6 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import type { PluginTheme } from '@getpaseo/plugin';
 import { appendCode } from './tooltip-code.ts';
+import { Completions } from './completion.ts';
 import { nativeEditors, editorBuffers, type Binding } from './native.ts';
 import { positionOffset, type Diagnostic, type EditorApi, type Signature } from '../shared/contracts.ts';
 
@@ -14,6 +15,7 @@ export class Intelligence {
   private style = document.createElement('style');
   private tooltip = document.createElement('div');
   private stopped = false;
+  private completions: Completions;
   private hoverTimer?: ReturnType<typeof setTimeout>;
   private frame = 0;
   private hoverRequest = 0;
@@ -23,6 +25,7 @@ export class Intelligence {
   private timer: ReturnType<typeof setInterval>;
   private observer: MutationObserver;
   constructor(private api: EditorApi, private hostId: string, private editorId: string, colors: IntelligenceColors, private notify: (message: string, error?: boolean) => void) {
+    this.completions = new Completions(hostId, editorId, () => this.api, workspace => this.workspaces.add(workspace), (message, error) => this.notify(message, error));
     document.head.append(this.style);
     this.tooltip.id = this.id; this.tooltip.dataset.lspTooltip = ''; this.tooltip.setAttribute('role', 'tooltip');
     document.body.append(this.tooltip); this.update(api, colors, notify); this.hide();
@@ -36,6 +39,8 @@ export class Intelligence {
   update(api: EditorApi, colors: IntelligenceColors, notify: (message: string, error?: boolean) => void) {
     this.api = api; this.notify = notify;
     this.style.textContent = [1, 2, 3, 4].map(severity => `::highlight(${this.id}-${severity}) { text-decoration: underline wavy ${severity === 1 ? '#ed6666' : severity === 2 ? '#d6a642' : colors.accent}; text-underline-offset: 3px; }`).join('\n') + `
+[data-testid="file-source-editor"] .cm-tooltip-autocomplete {background:${colors.surface0};color:${colors.foreground};border-color:${colors.border}}
+[data-testid="file-source-editor"] .cm-tooltip-autocomplete > ul > li[aria-selected="true"] {background:${colors.accent};color:${colors.surface0}}
 #${this.id} code {font:inherit}
 #${this.id} .tok-keyword {color:color-mix(in srgb,#b06acb 75%,${colors.foreground})}
 #${this.id} .tok-typeName, #${this.id} .tok-className {color:color-mix(in srgb,#399b93 75%,${colors.foreground})}
@@ -135,6 +140,7 @@ export class Intelligence {
   private tick() {
     if (this.stopped || document.hidden) return;
     const bindings = nativeEditors(this.hostId);
+    this.completions.update(bindings);
     const focused = bindings.find(binding => binding.view.hasFocus);
     if (focused) {
       const doc = focused.view.state.doc, head = focused.view.state.selection.main.head;
@@ -196,7 +202,7 @@ export class Intelligence {
     highlights.forEach((highlight, index) => CSS.highlights.set(`${this.id}-${index + 1}`, highlight));
   }
   async dispose() {
-    this.stopped = true; clearInterval(this.timer); this.observer.disconnect(); cancelAnimationFrame(this.frame); this.hide();
+    this.stopped = true; clearInterval(this.timer); this.observer.disconnect(); cancelAnimationFrame(this.frame); this.hide(); this.completions.dispose();
     document.removeEventListener('mousemove', this.mouse, true); document.removeEventListener('keydown', this.key, true); document.removeEventListener('scroll', this.scroll, true);
     this.style.remove(); this.tooltip.remove(); for (let i = 1; i <= 4; i++) CSS.highlights?.delete(`${this.id}-${i}`);
     await Promise.all([...this.workspaces].map(workspaceId => this.api.release({ workspaceId, editorId: this.editorId }).catch(() => {})));

@@ -23,3 +23,10 @@ test('signature help selects overloads and active parameters using UTF-16 offset
   assert.deepEqual(signatureInfo({ signatures: [{ label, parameters: [{ label: 'count: int' }] }] })?.parameter, [from, to]);
   assert.equal(signatureInfo({ signatures: [{ label, parameters: [{ label: [99, 100] }] }] })?.parameter, undefined);
 });
+
+test('completion items preserve plain edits and reject unsupported edits', async () => {
+  const { completionItems } = await import('../server/languages.ts');
+  const range = { start: { line: 0, character: 1 }, end: { line: 0, character: 3 } };
+  assert.deepEqual(completionItems({ items: [{ label: 'hello', textEdit: { range, newText: 'help' } }, { label: 'snippet', insertTextFormat: 2 }, { label: 'import', additionalTextEdits: [{}] }] }), [{ label: 'hello', insertText: 'help', range, detail: undefined }]);
+  assert.deepEqual(completionItems(null), []);
+});

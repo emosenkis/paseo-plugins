@@ -35,6 +35,10 @@ for (const extension of ['py', 'ts']) test(`${extension} diagnostics, hover and 
     buffers[0].text = python
       ? 'def greet(name: str, count: int) -> str:\n    return name * count\nresult = greet("Ada", 2)\n'
       : 'function greet(name: string, count: number): string { return name.repeat(count); }\nconst result = greet("Ada", 2);\n';
+    buffers[0].text += 'gre';
+    const completionLine = python ? 3 : 2;
+    const completions = (await languages.inspect(root, 'diagnostics', path, buffers, { line: completionLine, character: 3 }, 'completion')).completions;
+    assert.ok(completions?.some(item => item.label.includes('greet')), JSON.stringify(completions?.slice(0, 10)));
     const callLine = python ? 2 : 1;
     const call = buffers[0].text.split('\n')[callLine];
     const signature = (await languages.inspect(root, 'diagnostics', path, buffers, { line: callLine, character: call.indexOf(', 2') + 2 }, 'signature')).signature;

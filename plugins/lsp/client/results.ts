@@ -1,6 +1,6 @@
 import type { Target } from '../shared/contracts.ts';
 
-export type NavigationResults = { title: string; status: string; targets: Target[]; open(target: Target): void };
+export type NavigationResults = { title: string; source?: string; status: string; targets: Target[]; open(target: Target): void };
 export type NavigationHistory = { targets: Target[]; index: number; open(index: number): void };
 const histories = new Map<string, NavigationHistory>();
 export function getHistory(hostId: string, workspaceId: string) { return histories.get(key(hostId, workspaceId)); }

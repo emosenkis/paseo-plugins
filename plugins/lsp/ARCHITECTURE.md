@@ -21,7 +21,7 @@ The probe and its logging RPC were removed afterwards. Production code contains 
 ## End-to-end flow
 
 - A sidebar contribution mounts one adapter for the selected host. It renders no separate UI. API updates update that adapter without restarting it on ordinary React re-renders.
-- Document-level capture listeners handle F12, Shift+F12, Cmd/Ctrl-click only inside native `file-source-editor` elements with a matching host, file pane and editable CodeMirror view. No CodeMirror extensions or state objects from the plugin are installed in the host instance.
+- Document-level capture listeners handle F12, Shift+F12, Cmd/Ctrl-click only inside native `file-source-editor` elements with a matching host, file pane and editable CodeMirror view. Completion installs a CodeMirror extension built with the host instance, as described below.
 - The adapter reads the native cursor and all mounted native buffers in that host/workspace. Duplicate source buffers use the focused source text. Conflicting copies of another file fail explicitly rather than silently choosing an unsaved version.
 - Validated plugin RPC resolves the workspace on the daemon and reads `.paseo/lsp.json` and selects the most specific directory-scoped stdio language server profile by extension. Persistent sessions synchronize didOpen/didChange/didClose and document versions. TypeScript’s syntax-only fallback is disabled so navigation uses semantic project analysis.
 - Microsoft vscode-jsonrpc handles framing and correlation. Both supported language servers use UTF-16 coordinates. Server-originated edits are rejected.
@@ -38,6 +38,16 @@ The bridge handles `publishDiagnostics` (filtering explicit stale document versi
 Hover uses `textDocument/hover` after a 250 ms pointer pause and checks the advertised capability. LSP MarkedString/MarkupContent forms become bounded text/code blocks, preserving fenced language information. Standalone Lezer parsers color Python and TypeScript/JavaScript code without installing extensions into Paseo’s CodeMirror. Tooltips inherit the native editor’s font and use theme-adjusted syntax colors. Prose and unknown languages remain plain text; all markup is constructed from text nodes and token spans. Pointer movement, scrolling, keystrokes, buffer changes and disposal invalidate outstanding responses. Diagnostic messages take precedence when hovering over a squiggle.
 
 Signature help uses `textDocument/signatureHelp` after a focused caret/document change settles for 250 ms, or on Ctrl+Shift+Space. The server selects the call/overload; the client highlights the active parameter using LSP UTF-16 label offsets (or a string label). It renders signature labels with syntax coloring and preserves active-parameter emphasis; signature and parameter documentation remain plain text. Old caret/document/focus generations cannot reopen a tooltip, and Escape keeps it dismissed until the context changes or it is explicitly invoked. Unavailable hover/signature support returns an empty result without tearing down a healthy diagnostic session.
+
+## Rename
+
+F2 requests `textDocument/prepareRename` when supported, then displays an accessible modal name input. The explicit `editor.rename` RPC synchronizes native buffers and requests `textDocument/rename`. Both `changes` and versioned `documentChanges` text-edit forms are validated; resource operations, external paths, duplicate targets, stale versions, invalid/overlapping ranges and excess payloads fail the whole request. Unsolicited `workspace/applyEdit` remains rejected.
+
+The adapter opens every target in native tabs, checks the returned source snapshots, then recomputes the rename with all mounted buffers. For a cross-file rename, a confirmation dialog shows each proposed diff and can open a workspace diff tab. Cancel makes no edits; confirmation checks that the same editor copies and document snapshots remain before synchronous CodeMirror transactions apply any text edits. Targets newly introduced by the second response cause a retry instead of a partial rename. Changes remain unsaved and use each editor's existing history; there is no workspace-wide undo or atomic transaction across editors. Plugin disposal cancels the name input, review and pending file opens. The server's project analysis determines which references are included.
+
+## Completion
+
+The adapter finds the host's CodeMirror state, view and language modules through Metro's module loader and the application bundle, and verifies that their editor constructors match the recovered view. It loads the installed `@codemirror/autocomplete` implementation against those host modules, then installs it in a removable compartment per editor. The source requests LSP completions for the current unsaved buffers; CodeMirror handles presentation, filtering lifecycle and keyboard interaction. Results with unsupported snippet, command or additional-edit requirements are omitted. Stale responses and invalid edit ranges are ignored. Plugin disposal removes the compartments. Metro module discovery and CodeMirror DOM tiles are private interfaces and may require changes after Paseo updates.
 
 ## Alternatives revisited
 

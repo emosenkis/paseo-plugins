@@ -1,4 +1,7 @@
-import { EditorView } from '@codemirror/view';
+import type { EditorView } from '@codemirror/view';
+import type { IntelligenceColors } from './intelligence.ts';
+import { renameChanges, renameInput, renameReview } from './rename.ts';
+import { setRenamePreview } from './rename-preview.ts';
 import type { EditorApi, Target } from '../shared/contracts.ts';
 import { setResults, clearResults, getHistory, setHistory, appendHistory } from './results.ts';
 
@@ -24,7 +27,9 @@ export function nativeEditors(hostId: string, workspaceId?: string): Binding[] {
   for (const element of document.querySelectorAll<HTMLElement>('[data-testid="file-source-editor"]')) {
     const pane = nativePane(element);
     if (!pane || pane.serverId !== hostId || (workspaceId && pane.workspaceId !== workspaceId) || pane.target.kind !== 'file' || !pane.target.path) continue;
-    const view = EditorView.findFromDOM(element);
+    // shortcut: CodeMirror stores its view on a private DOM tile; update if that layout changes.
+    const content = element.querySelector('.cm-content') as (HTMLElement & { cmTile?: { root?: { view?: EditorView } } }) | null;
+    const view = content?.cmTile?.root?.view;
     if (view && !view.state.readOnly) bindings.push({ element, pane, view, path: pane.target.path });
   }
   return bindings;
@@ -48,11 +53,12 @@ export class NativeNavigation {
   private busy = false;
   private pending = new Set<() => void>();
   private sidePress?: number;
-  constructor(private api: EditorApi, readonly hostId: string, private openResults: (workspaceId: string) => void, private notify: (message: string, error?: boolean) => void) {
+  constructor(private api: EditorApi, readonly hostId: string, private openResults: (workspaceId: string) => void, private notify: (message: string, error?: boolean) => void, private openDiff: (workspaceId: string) => void = () => {}) {
     document.addEventListener('keydown', this.key, true);
     document.addEventListener('mousedown', this.mouse, true);
     document.addEventListener('mouseup', this.mouseUp, true);
   }
+  colors?: IntelligenceColors;
   update(api: EditorApi, notify: (message: string, error?: boolean) => void) { this.api = api; this.notify = notify; }
   private binding(event: Event) {
     const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-testid="file-source-editor"]') : null;
@@ -70,6 +76,10 @@ export class NativeNavigation {
     if (step) {
       const binding = this.binding(event); if (!binding || !this.travelBy(binding, step)) return;
       event.preventDefault(); event.stopImmediatePropagation(); return;
+    }
+    if (event.key === 'F2' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      const binding = this.binding(event); if (!binding) return;
+      event.preventDefault(); event.stopImmediatePropagation(); void this.rename(binding); return;
     }
     if (event.key !== 'F12' || event.altKey || event.ctrlKey || event.metaKey) return;
     const binding = this.binding(event); if (!binding) return;
@@ -112,6 +122,7 @@ export class NativeNavigation {
       return line.from + point.character;
     };
     binding.view.dispatch({ selection: { anchor: offset(target.range.start), head: offset(target.range.end) }, scrollIntoView: true }); binding.view.focus();
+    return binding;
   }
   private async openTarget(source: Binding, target: Target) {
     if (this.stopped || this.busy) return;
@@ -149,30 +160,85 @@ export class NativeNavigation {
     } catch (error) { if (!this.stopped) this.notify(String(error), true); }
     finally { this.busy = false; }
   }
+  async rename(source: Binding) {
+    if (this.stopped || this.busy) return;
+    this.busy = true;
+    try {
+      const workspaceId = source.pane.workspaceId;
+      const initial = nativeEditors(this.hostId, workspaceId).map(binding => ({ binding, doc: binding.view.state.doc }));
+      const unchanged = () => {
+        if (this.stopped || initial.some(({ binding, doc }) => !binding.element.isConnected || binding.view.state.doc !== doc)) throw new Error('Editor changed during rename. Retry rename.');
+      };
+      const head = source.view.state.selection.main.head, line = source.view.state.doc.lineAt(head);
+      const position = { line: line.number - 1, character: head - line.from };
+      const request = (newName?: string) => this.api.rename({ workspaceId, editorId: this.editorId, path: source.path, buffers: editorBuffers(source), position, newName });
+      this.sessions.add(workspaceId);
+      const prepared = await request(); unchanged();
+      const input = renameInput(prepared.placeholder ?? '', this.colors); this.pending.add(input.cancel);
+      let newName: string | null;
+      try { newName = await input.result; } finally { this.pending.delete(input.cancel); }
+      if (newName === null || newName === prepared.placeholder) return;
+      unchanged();
+      const plan = await request(newName); unchanged();
+      if (!plan.files.length) { this.notify('No rename changes.'); return; }
+      for (const file of plan.files) {
+        const binding = await this.destination(source, { path: file.path, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } });
+        unchanged();
+        if (!binding || binding.view.state.sliceDoc() !== file.text) throw new Error('A rename target changed. Retry rename.');
+      }
+      // Recompute after opening closed files so the server sees every target's native buffer.
+      const result = await request(newName); unchanged();
+      const bindings = nativeEditors(this.hostId, workspaceId);
+      const transactions = result.files.flatMap(file => {
+        const copies = bindings.filter(binding => binding.path === file.path);
+        if (!copies.length || !plan.files.some(target => target.path === file.path)) throw new Error('Rename targets changed. Retry rename.');
+        return copies.map(binding => ({ binding, doc: binding.view.state.doc, changes: renameChanges(file, binding.view.state.sliceDoc()) }));
+      });
+      if (result.files.length > 1) {
+        setRenamePreview(this.hostId, workspaceId, result.files);
+        const review = renameReview(result.files, () => this.openDiff(workspaceId), this.colors); this.pending.add(review.cancel);
+        let confirmed: boolean;
+        try { confirmed = await review.result; } finally { this.pending.delete(review.cancel); setRenamePreview(this.hostId, workspaceId); }
+        if (!confirmed) return;
+        unchanged();
+        const current = nativeEditors(this.hostId, workspaceId).filter(binding => result.files.some(file => file.path === binding.path));
+        if (current.length !== transactions.length || current.some(binding => !transactions.some(item => item.binding.view === binding.view))) throw new Error('Rename targets changed. Retry rename.');
+      }
+      // Validate all targets before dispatching any edit; dispatches run synchronously.
+      for (const item of transactions) if (!item.binding.element.isConnected || item.binding.view.state.doc !== item.doc) throw new Error('A rename target changed. Retry rename.');
+      for (const { binding, changes } of transactions) binding.view.dispatch({ changes, userEvent: 'input.rename' });
+      source.view.focus();
+      this.notify(`Renamed in ${result.files.length} file(s). Changes are unsaved; undo is per file.`);
+    } catch (error) { if (!this.stopped) this.notify(error instanceof Error ? error.message : String(error), true); }
+    finally { this.busy = false; }
+  }
   async navigate(source: Binding, kind: 'definition' | 'references') {
     if (this.stopped || this.busy) return;
     this.busy = true; const request = ++this.request;
     const state = source.view.state;
     const head = state.selection.main.head, line = state.doc.lineAt(head);
+    const word = state.wordAt(head);
+    const symbol = word ? state.sliceDoc(word.from, word.to) : '';
     const publish = (status: string, targets: Target[] = []) => {
       if (this.stopped || request !== this.request) return;
       setResults(this.hostId, source.pane.workspaceId, {
-        title: `${kind === 'definition' ? 'Definition' : 'Usages'}: ${source.path}:${line.number}`,
+        title: `${kind === 'definition' ? 'Definitions' : 'References'}${symbol ? ` for “${symbol}”` : ''}`,
+        source: `${source.path}:${line.number}:${head - line.from + 1}`,
         status, targets,
         open: target => { void this.openTarget(source, target).catch(error => { publish(String(error)); this.notify(String(error), true); }); },
       });
     };
     try {
-      publish(`Finding ${kind === 'definition' ? 'definition' : 'usages'}…`);
+      publish(`Finding ${kind === 'definition' ? 'definition' : 'references'}…`);
       const buffers = editorBuffers(source);
       this.sessions.add(source.pane.workspaceId);
       const response = await this.api.lookup({ workspaceId: source.pane.workspaceId, editorId: this.editorId, path: source.path, buffers, position: { line: line.number - 1, character: head - line.from }, kind });
       if (this.stopped || request !== this.request) return;
       if (!source.element.isConnected || source.view.state.doc !== state.doc || source.view.state.selection.main.head !== head) { throw new Error('Editor changed during lookup; rerun navigation.'); }
-      publish(`${response.targets.length} ${kind === 'definition' ? 'definition' : 'usage'} result(s).${response.omitted ? ` ${response.omitted} external, unavailable or excess targets omitted.` : ''}`, response.targets);
+      publish(`${response.targets.length} ${kind === 'definition' ? 'definition' : 'reference'} result(s).${response.omitted ? ` ${response.omitted} external, unavailable or excess targets omitted.` : ''}`, response.targets);
       if (response.targets.length === 1) await this.jump(source, response.targets[0]);
       else if (response.targets.length > 1) this.openResults(source.pane.workspaceId);
-      else this.notify(`No ${kind === 'definition' ? 'definition' : 'usages'} found.${response.omitted ? ` ${response.omitted} targets outside the workspace or unavailable.` : ''}`);
+      else this.notify(`No ${kind === 'definition' ? 'definition' : 'references'} found.${response.omitted ? ` ${response.omitted} targets outside the workspace or unavailable.` : ''}`);
     } catch (error) { if (!this.stopped && request === this.request) { const message = error instanceof Error ? error.message : String(error); publish(message); this.notify(message, true); } }
     finally { this.busy = false; }
   }

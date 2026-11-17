@@ -26,7 +26,7 @@ paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/agen
 
 ## LSP
 
-Native code navigation for Paseo's file editor. See [the plugin overview](plugins/lsp/OVERVIEW.md)
+Code navigation, autocomplete, and symbol rename for Paseo's file editor. See [the plugin overview](plugins/lsp/OVERVIEW.md)
 for configuration and supported language servers.
 See [example configurations](plugins/lsp/examples/README.md) for a ready-to-use TypeScript setup.
 
@@ -35,9 +35,32 @@ through `pnpx`. Install pnpm on the daemon host; pnpx downloads the packages on 
 The TypeScript server uses the latest TypeScript 6 release because TypeScript 7 no longer
 ships the `tsserver` it requires. The explicit `tsserver` path resolves from pnpx's environment.
 
-Copied from [Covered-Health/paseo-plugins](https://github.com/Covered-Health/paseo-plugins) at
-`dbe3e19baec869509690537f3e3cd8fe5adb972f`. Copyright (c) 2026 Protego Health; MIT licensed.
+Synced from [Covered-Health/paseo-plugins](https://github.com/Covered-Health/paseo-plugins) through
+`484d095450a275f9589d73996f4961bb2d636aaa`. Copyright (c) 2026 Protego Health; MIT licensed.
 
 ```shell
 paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/lsp
 ```
+
+### Updating from upstream
+
+The original upstream revision is recorded as a merge ancestor. Both repositories use
+`plugins/lsp/`, so ordinary merges preserve the directory layout and our local changes.
+On a fresh clone, add the remote once:
+
+```sh
+git remote add upstream https://github.com/Covered-Health/paseo-plugins.git
+```
+
+Then update with:
+
+```sh
+git fetch upstream main
+git merge upstream/main
+```
+
+Review the merge before pushing: it includes upstream changes across the repository,
+including any new plugins. Keep our install hardening, packaged license, and example
+configurations when resolving conflicts. The LSP build explicitly generates the
+autocomplete source after installing locked dependencies with lifecycle scripts disabled.
+Run `npm ci`, `npm test`, and `npm run typecheck` in `plugins/lsp/` after merging.
