@@ -1,4 +1,11 @@
 {
   "id": "agent-keep-awake",
-  "requirements": { "paseo": ">=0.11.2" }
+  "requirements": {
+    "paseo": ">=0.11.2"
+  },
+  "name": "Keep Awake",
+  "description": "Prevents system sleep during agent turns or whenever the Keep awake sidebar switch is on.",
+  "media": [
+    "assets/keep-awake.png"
+  ]
 }
