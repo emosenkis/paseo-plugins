@@ -14,7 +14,10 @@ paseo plugin install .
 
 ## Agent keep-awake
 
-`agent-keep-awake` prevents system sleep while any agent turn is running. It uses
+`agent-keep-awake` prevents system sleep while any agent turn is running. The **Keep awake**
+sidebar footer switch also keeps the host awake without running agents. Turning it off
+restores automatic behavior. Screen locking and display power-off remain available.
+The manual switch resets when the plugin or daemon restarts. Requires Paseo 0.11.2 or later. It uses
 `caffeinate` on macOS, `systemd-inhibit` on Linux, and `SetThreadExecutionState` through
 PowerShell on Windows.
 

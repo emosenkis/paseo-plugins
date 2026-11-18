@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
+import { keepAwake } from "./shared/keep-awake";
 import { createMonitor, inhibitorCommand } from "./server/keep-awake";
 
 let inhibitor: ChildProcess | undefined;
@@ -26,7 +27,11 @@ function stopInhibitor() {
 
 export default function contribute(server: PluginServerContext) {
   const monitor = createMonitor(startInhibitor, stopInhibitor);
-  // ponytail: lifecycle events are not replayed; use a startup snapshot if Paseo exposes one.
+  server.handle(keepAwake, ({ enabled }) => {
+    if (enabled !== undefined) monitor.setManual(enabled);
+    return { enabled: monitor.manual };
+  });
+  // shortcut: lifecycle events are not replayed; use a startup snapshot if Paseo exposes one.
   const removeStarted = server.on("agent.turn_started", ({ agent }) => monitor.started(agent.id));
   const removeEnded = server.on("agent.turn_ended", ({ agent }) => monitor.ended(agent.id));
   return () => {
