@@ -87,15 +87,14 @@ async function runChecks() {
   assert(opened.includes(base + 'symbol.py'), 'Did not use native openFileInWorkspace callback');
   assert(getResults(hostId, workspaceId!)?.title.includes('“greet”'), 'Missing queried symbol');
   checks.push('Python F12 opens a native tab and selects the symbol');
-  const historyKey = (view: EditorView, key: string) => view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true }));
   const origin = usage.view.state.selection.main.head;
   assert(getHistory(hostId, workspaceId!)?.targets.length === 2, 'Missing origin/destination history');
-  historyKey(find('symbol.py')!.view, 'ArrowLeft');
-  await until(() => getHistory(hostId, workspaceId!)?.index === 0, 'history back');
-  assert(usage.view.state.selection.main.head === origin, 'Back lost source caret');
-  historyKey(usage.view, 'ArrowRight');
-  await until(() => getHistory(hostId, workspaceId!)?.index === 1 && selected('symbol.py', 'greet'), 'history forward');
-  checks.push('Alt+Left/Right restores source caret and destination selection');
+  for (const modifier of ['altKey', 'ctrlKey']) for (const key of ['ArrowLeft', 'ArrowRight']) {
+    const event = new KeyboardEvent('keydown', { key, [modifier]: true, bubbles: true, cancelable: true });
+    find('symbol.py')!.view.contentDOM.dispatchEvent(event);
+    assert(!event.defaultPrevented && getHistory(hostId, workspaceId!)?.index === 1, 'Arrow shortcut intercepted text navigation');
+  }
+  checks.push('Ctrl/Alt+Left/Right remain available for text navigation');
   const side = (view: EditorView, button: number) => view.contentDOM.dispatchEvent(new MouseEvent('mousedown', { button, bubbles: true, cancelable: true }));
   side(find('symbol.py')!.view, 3);
   const release = () => { const event = new MouseEvent('mouseup', { button: 3, bubbles: true, cancelable: true }); document.body.dispatchEvent(event); return event.defaultPrevented; };

@@ -4,21 +4,22 @@ import { useRpc, type PluginSidebarItemProps } from '@getpaseo/plugin/client';
 import { useToast } from '@getpaseo/plugin/client/react-native';
 import { lookup, release, inspect, rename } from '../shared/contracts.ts';
 import { Intelligence } from './intelligence.ts';
+import { DiffIntelligence } from './diff.ts';
 import { NativeNavigation } from './native.ts';
 
-const adapters = new Map<string, { navigation: NativeNavigation; intelligence: Intelligence }>();
+const adapters = new Map<string, { navigation: NativeNavigation; intelligence: Intelligence; diff: DiffIntelligence }>();
 export function NativeInstaller({ host, theme, openResults, openDiff }: PluginSidebarItemProps & { openResults(workspaceId: string): void; openDiff(workspaceId: string): void }) {
   const toast = useToast();
   const notify = useMemo(() => (message: string, error = false) => { if (error) toast.error(message); else toast.show(message); }, [toast]);
   const find = useRpc(lookup), close = useRpc(release), analyze = useRpc(inspect), changeName = useRpc(rename);
   const api = useMemo(() => ({ lookup: find, release: close, inspect: analyze, rename: changeName }), [find, close, analyze, changeName]);
-  const current = useRef<{ navigation: NativeNavigation; intelligence: Intelligence } | null>(null);
+  const current = useRef<{ navigation: NativeNavigation; intelligence: Intelligence; diff: DiffIntelligence } | null>(null);
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const adapter = { navigation: new NativeNavigation(api, host.id, openResults, notify, openDiff), intelligence: new Intelligence(api, host.id, `assist-${Date.now()}-${Math.random().toString(36).slice(2)}`, theme.colors, notify) }; adapter.navigation.colors = theme.colors; adapters.set(host.id, adapter); current.current = adapter;
-    return () => { if (adapters.get(host.id) === adapter) adapters.delete(host.id); current.current = null; void Promise.all([adapter.navigation.dispose(), adapter.intelligence.dispose()]); };
+    const adapter = { diff: new DiffIntelligence(api, host.id, theme.colors, openResults, notify), navigation: new NativeNavigation(api, host.id, openResults, notify, openDiff), intelligence: new Intelligence(api, host.id, `assist-${Date.now()}-${Math.random().toString(36).slice(2)}`, theme.colors, notify) }; adapter.navigation.colors = theme.colors; adapters.set(host.id, adapter); current.current = adapter;
+    return () => { if (adapters.get(host.id) === adapter) adapters.delete(host.id); current.current = null; void Promise.all([adapter.navigation.dispose(), adapter.intelligence.dispose(), adapter.diff.dispose()]); };
   }, [host.id]);
-  useEffect(() => { if (current.current) current.current.navigation.colors = theme.colors; current.current?.navigation.update(api, notify); current.current?.intelligence.update(api, theme.colors, notify); }, [api, notify, theme]);
+  useEffect(() => { if (current.current) current.current.navigation.colors = theme.colors; current.current?.navigation.update(api, notify); current.current?.intelligence.update(api, theme.colors, notify); current.current?.diff.update(api, theme.colors); }, [api, notify, theme]);
   return null;
 }
-export async function disposeNative() { const all = [...adapters.values()]; adapters.clear(); await Promise.all(all.flatMap(adapter => [adapter.navigation.dispose(), adapter.intelligence.dispose()])); }
+export async function disposeNative() { const all = [...adapters.values()]; adapters.clear(); await Promise.all(all.flatMap(adapter => [adapter.navigation.dispose(), adapter.intelligence.dispose(), adapter.diff.dispose()])); }

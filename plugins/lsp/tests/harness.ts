@@ -7,9 +7,10 @@ import { DaemonClient } from '@getpaseo/client/internal/daemon-client';
 
 const workspaceId = process.argv[2];
 if (!workspaceId) throw new Error('Usage: npm run browser-harness -- <workspace-id>');
-const bundle = await build({ entryPoints: [fileURLToPath(new URL('./browser-entry.ts', import.meta.url))], bundle: true, alias: { 'react-native': 'react-native-web' }, platform: 'browser', format: 'esm', target: 'es2022', write: false });
+const diffOnly = workspaceId === '--diff';
+const bundle = await build({ entryPoints: [fileURLToPath(new URL(diffOnly ? './diff-browser.ts' : './browser-entry.ts', import.meta.url))], bundle: true, alias: { 'react-native': 'react-native-web' }, platform: 'browser', format: 'esm', target: 'es2022', write: false });
 const client = new DaemonClient({ url: 'ws://127.0.0.1:6767/ws', clientId: 'lsp-browser-proof', clientType: 'cli', reconnect: { enabled: false } });
-await client.connect();
+if (!diffOnly) await client.connect();
 const methods: Record<string, string> = { rename: 'editor.rename', lookup: 'editor.lookup', inspect: 'editor.inspect', release: 'editor.release' };
 const server = createServer(async (request, response) => {
   try {
