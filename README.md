@@ -29,7 +29,8 @@ paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/agen
 
 ## LSP
 
-Code navigation, autocomplete, and symbol rename for Paseo's file editor. See [the plugin overview](plugins/lsp/OVERVIEW.md)
+Code navigation, autocomplete, and symbol rename for Paseo's file editor. Working diffs
+also support hover, signature help, symbol highlights, and definition/reference jumps. See [the plugin overview](plugins/lsp/OVERVIEW.md)
 for configuration and supported language servers.
 See [example configurations](plugins/lsp/examples/README.md) for a ready-to-use TypeScript setup.
 Use **Restart LSP servers** in the Command Center after changing server tooling.
@@ -49,7 +50,7 @@ The TypeScript server uses the latest TypeScript 6 release because TypeScript 7 
 ships the `tsserver` it requires. The explicit `tsserver` path resolves from pnpx's environment.
 
 Synced from [Covered-Health/paseo-plugins](https://github.com/Covered-Health/paseo-plugins) through
-`484d095450a275f9589d73996f4961bb2d636aaa`. Copyright (c) 2026 Protego Health; MIT licensed.
+`adec59b2f8bc7bc4f1afa9a6c17947308549dddc`. Copyright (c) 2026 Protego Health; MIT licensed.
 
 ```shell
 paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/lsp

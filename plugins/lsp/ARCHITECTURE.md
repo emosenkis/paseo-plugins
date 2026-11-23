@@ -73,7 +73,7 @@ A ty profile may use `command: "ty"`, `args: ["server"]`, and `languages: { "py"
 
 ## Scope and limits
 
-Private pane and editor lookup lives in `client/native.ts`: the `__reactFiber$` DOM key, native source selector, CodeMirror DOM tile, pane-context shape and native file-open request shape. Autocomplete also depends on Metro module discovery in `client/metro.ts` and `client/completion.ts`. No Paseo application checkout was modified. This was tested on 0.11.2; future updates may require changes. The plugin's sidebar item mounts the host-scoped adapter, so its selected host and visibility affect activation.
+Private pane and editor lookup lives in `client/native.ts`: the `__reactFiber$` DOM key, native source selector, CodeMirror DOM tile, pane-context shape and native file-open request shape. Working diffs also depend on the private canvas model and React hook refs in `client/diff.ts`. Autocomplete depends on Metro module discovery in `client/metro.ts` and `client/completion.ts`. No Paseo application checkout was modified. This was tested on 0.11.2; future updates may require changes. The plugin's sidebar item mounts the host-scoped adapter, so its selected host and visibility affect activation.
 
 Paseo owns dirty-buffer retention. The plugin supplies mounted buffers; other files come from the server’s disk view. Servers requiring client-driven file watchers are not supported yet. Workspace-external locations are omitted, with no traversal or reading of those targets. Limits: 30 buffers, 2 MiB per buffer, 8 MiB total, 500 unique targets, 30-second request deadline and five-minute idle eviction. Windows lacks the POSIX process-group termination behavior. Mobile is not supported.
 
