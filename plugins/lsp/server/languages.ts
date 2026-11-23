@@ -196,19 +196,29 @@ export class Languages {
   private sessions = new Map<string, Session>();
   private stopped = false;
   private configs = new Map<string, string>();
+  private approvals = new Map<string, string>();
+  async approveDiffCommands(root: string, approved?: string) {
+    root = await realpath(root);
+    const snapshot = JSON.stringify(await readConfig(root));
+    if (approved !== undefined) {
+      if (approved !== snapshot) throw new Error("LSP configuration changed during approval. Review it again.");
+      this.approvals.set(root, snapshot);
+    }
+    return snapshot;
+  }
   private sweep = setInterval(() => {
     for (const [key, session] of this.sessions) if (Date.now() - session.lastUsed > 5 * 60_000) { this.sessions.delete(key); void session.dispose().catch(console.error); }
   }, 30_000);
-  async lookup(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references', timeoutMs = 30_000) {
-    return await this.request(root, editorId, path, buffers, position, kind, timeoutMs) as { targets: Target[]; omitted: number };
+  async lookup(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references', timeoutMs = 30_000, approvedOnly = false) {
+    return await this.request(root, editorId, path, buffers, position, kind, timeoutMs, undefined, approvedOnly) as { targets: Target[]; omitted: number };
   }
-  async inspect(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'diagnostics' | 'hover' | 'signature' | 'completion' | 'highlights' = 'diagnostics') {
-    return await this.request(root, editorId, path, buffers, position, kind, 30_000) as Inspection;
+  async inspect(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'diagnostics' | 'hover' | 'signature' | 'completion' | 'highlights' = 'diagnostics', approvedOnly = false) {
+    return await this.request(root, editorId, path, buffers, position, kind, 30_000, undefined, approvedOnly) as Inspection;
   }
   async rename(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, newName?: string) {
     return await this.request(root, editorId, path, buffers, position, 'rename', 30_000, newName) as RenameResult;
   }
-  private async request(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'highlights' | 'rename', timeoutMs: number, newName?: string): Promise<{ targets: Target[]; omitted: number } | Inspection | RenameResult> {
+  private async request(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'highlights' | 'rename', timeoutMs: number, newName?: string, approvedOnly = false): Promise<{ targets: Target[]; omitted: number } | Inspection | RenameResult> {
     if (this.stopped) throw new Error('Editor plugin stopped.');
     root = await realpath(root);
     let servers: ScopedServer[];
@@ -234,7 +244,11 @@ export class Languages {
     positionOffset(active.text, position);
     if (this.stopped) throw new Error('Editor plugin stopped.');
     // Another lookup can reload config while buffer paths are being resolved.
-    if (this.configs.get(root) !== JSON.stringify(servers)) return this.request(root, editorId, path, buffers, position, kind, timeoutMs, newName);
+    if (this.configs.get(root) !== JSON.stringify(servers)) return this.request(root, editorId, path, buffers, position, kind, timeoutMs, newName, approvedOnly);
+    if (approvedOnly && this.approvals.get(root) !== JSON.stringify(servers)) {
+      this.approvals.delete(root);
+      throw new Error("Approve LSP commands for diffs in the Command Center before inspecting this workspace.");
+    }
     const key = JSON.stringify([root, editorId, config]);
     let session = this.sessions.get(key);
     if (!session) {
@@ -266,5 +280,5 @@ export class Languages {
     }
     await Promise.all(closing);
   }
-  async dispose() { this.stopped = true; this.configs.clear(); clearInterval(this.sweep); const sessions = [...this.sessions.values()]; this.sessions.clear(); await Promise.all(sessions.map(session => session.dispose())); }
+  async dispose() { this.stopped = true; this.configs.clear(); this.approvals.clear(); clearInterval(this.sweep); const sessions = [...this.sessions.values()]; this.sessions.clear(); await Promise.all(sessions.map(session => session.dispose())); }
 }

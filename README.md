@@ -32,6 +32,10 @@ paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/agen
 Code navigation, autocomplete, and symbol rename for Paseo's file editor. Working diffs
 also support hover, signature help, symbol highlights, and definition/reference jumps. See [the plugin overview](plugins/lsp/OVERVIEW.md)
 for configuration and supported language servers.
+Before using LSP in working diffs, run **Approve LSP commands for diffs** in the
+Command Center and review the host commands. Approval expires when the configuration
+changes or the plugin reloads.
+
 See [example configurations](plugins/lsp/examples/README.md) for a ready-to-use TypeScript setup.
 Use **Restart LSP servers** in the Command Center after changing server tooling.
 
