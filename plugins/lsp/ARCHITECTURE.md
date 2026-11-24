@@ -105,3 +105,5 @@ Diff-origin navigation resolves targets against the current canvas model before 
 ## Working-diff command approval
 
 Diff RPC handlers mark lookup and inspection requests as approval-only. `Languages` compares the current canonical workspace configuration with a daemon-memory approval immediately before session creation or reuse, including recursive config reconciliation. A workspace Command Center action displays the full resolved config and submits its exact snapshot only after confirmation. Approval rejects a changed snapshot and never launches a process. Parsed config changes invalidate diff access; plugin disposal clears approvals. Editor requests keep their previous behavior.
+
+Approval uses a bounded, scrollable in-app dialog with Cancel focused by default. `window.proof.approvalChecks()` in the browser harness checks text-only command rendering, modal focus, Cancel, Escape, explicit approval, and cleanup. Desktop, compact, and dark fixture screenshots exercise long command lists without hiding the action buttons.

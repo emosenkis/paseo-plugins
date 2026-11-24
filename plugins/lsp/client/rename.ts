@@ -8,7 +8,7 @@ export function renameChanges(file: RenameResult['files'][number], current: stri
   return changes;
 }
 
-function renameDialog(colors?: IntelligenceColors) {
+export function renameDialog(colors?: IntelligenceColors) {
   const dialog = document.createElement('dialog'); dialog.dataset.lspRename = '';
   const palette = colors ?? { surface0: '#ffffff', foreground: '#202124', border: '#c5c7cc', accent: '#3867d6' };
   dialog.style.setProperty('--surface', palette.surface0); dialog.style.setProperty('--foreground', palette.foreground);
