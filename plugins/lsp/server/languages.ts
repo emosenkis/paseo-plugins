@@ -12,7 +12,7 @@ import { contained, checkedText } from './files.ts';
 import { renameFiles } from './rename.ts';
 
 const provider = z.union([z.boolean(), z.record(z.string(), z.unknown())]);
-const initialization = z.object({ capabilities: z.object({ positionEncoding: z.string().optional(), definitionProvider: provider.optional(), referencesProvider: provider.optional(), diagnosticProvider: provider.optional(), hoverProvider: provider.optional(), signatureHelpProvider: provider.optional(), completionProvider: provider.optional(), renameProvider: provider.optional() }) });
+const initialization = z.object({ capabilities: z.object({ positionEncoding: z.string().optional(), definitionProvider: provider.optional(), referencesProvider: provider.optional(), diagnosticProvider: provider.optional(), documentHighlightProvider: provider.optional(), hoverProvider: provider.optional(), signatureHelpProvider: provider.optional(), completionProvider: provider.optional(), renameProvider: provider.optional() }) });
 const completionItem = z.object({ label: z.string().max(8000), insertText: z.string().max(32000).optional(), insertTextFormat: z.number().optional(), detail: z.string().max(8000).optional(), textEdit: z.object({ newText: z.string().max(32000), range }).optional(), additionalTextEdits: z.array(z.unknown()).optional(), command: z.unknown().optional() });
 export function completionItems(value: unknown) {
   const response = z.union([z.null(), z.array(z.unknown()), z.object({ items: z.array(z.unknown()) })]).parse(value);
@@ -92,7 +92,7 @@ class Session {
       const response = initialization.parse(await connection.sendRequest('initialize', {
         processId: process.pid, rootUri: pathToFileURL(root).href,
         workspaceFolders: [{ uri: pathToFileURL(root).href, name: root }],
-        capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, workspaceEdit: { documentChanges: true } }, window: { workDoneProgress: true }, textDocument: { definition: { linkSupport: true }, references: {}, rename: { prepareSupport: true }, hover: { contentFormat: ['markdown', 'plaintext'] }, signatureHelp: { contextSupport: true, signatureInformation: { documentationFormat: ['plaintext', 'markdown'], parameterInformation: { labelOffsetSupport: true }, activeParameterSupport: true } }, publishDiagnostics: { versionSupport: true }, diagnostic: { dynamicRegistration: false } } },
+        capabilities: { general: { positionEncodings: ['utf-16'] }, workspace: { configuration: true, workspaceFolders: true, workspaceEdit: { documentChanges: true } }, window: { workDoneProgress: true }, textDocument: { definition: { linkSupport: true }, references: {}, documentHighlight: {}, rename: { prepareSupport: true }, hover: { contentFormat: ['markdown', 'plaintext'] }, signatureHelp: { contextSupport: true, signatureInformation: { documentationFormat: ['plaintext', 'markdown'], parameterInformation: { labelOffsetSupport: true }, activeParameterSupport: true } }, publishDiagnostics: { versionSupport: true }, diagnostic: { dynamicRegistration: false } } },
         initializationOptions: config.initializationOptions,
       }));
       if (response.capabilities.positionEncoding && response.capabilities.positionEncoding !== 'utf-16') throw new Error('Language server selected an unsupported position encoding. UTF-16 is required.');
@@ -101,7 +101,7 @@ class Session {
     })();
     void this.ready.catch(() => {});
   }
-  query(files: { absolute: string; text: string; languageId: string }[], absolute: string, position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'rename', timeoutMs: number, newName?: string) {
+  query(files: { absolute: string; text: string; languageId: string }[], absolute: string, position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'highlights' | 'rename', timeoutMs: number, newName?: string) {
     const work = this.queue.catch(() => {}).then(async () => {
       if (this.closing) throw new Error('Language server session closed. Retry navigation.');
       this.lastUsed = Date.now();
@@ -143,6 +143,12 @@ class Session {
             }
             const result = await this.connection.sendRequest('textDocument/rename', { ...params, newName });
             return renameFiles(this.root, result, files, this.documents);
+          }
+          if (kind === 'highlights') {
+            const result = capabilities.documentHighlightProvider
+              ? z.array(z.object({ range })).nullable().parse(await this.connection.sendRequest('textDocument/documentHighlight', { textDocument: { uri: pathToFileURL(absolute).href }, position }))
+              : [];
+            return { diagnostics: [], highlights: (result ?? []).slice(0, 1000).map(item => item.range) };
           }
           if (kind === 'completion') return { diagnostics: [], completions: capabilities.completionProvider ? completionItems(await this.connection.sendRequest('textDocument/completion', { textDocument: { uri: pathToFileURL(absolute).href }, position })) : [] };
           if (kind === 'signature') return { diagnostics: [], signature: capabilities.signatureHelpProvider ? signatureInfo(await this.connection.sendRequest('textDocument/signatureHelp', { textDocument: { uri: pathToFileURL(absolute).href }, position, context: { triggerKind: 1, isRetrigger: false } })) : null };
@@ -190,19 +196,29 @@ export class Languages {
   private sessions = new Map<string, Session>();
   private stopped = false;
   private configs = new Map<string, string>();
+  private approvals = new Map<string, string>();
+  async approveDiffCommands(root: string, approved?: string) {
+    root = await realpath(root);
+    const snapshot = JSON.stringify(await readConfig(root));
+    if (approved !== undefined) {
+      if (approved !== snapshot) throw new Error("LSP configuration changed during approval. Review it again.");
+      this.approvals.set(root, snapshot);
+    }
+    return snapshot;
+  }
   private sweep = setInterval(() => {
     for (const [key, session] of this.sessions) if (Date.now() - session.lastUsed > 5 * 60_000) { this.sessions.delete(key); void session.dispose().catch(console.error); }
   }, 30_000);
-  async lookup(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references', timeoutMs = 30_000) {
-    return await this.request(root, editorId, path, buffers, position, kind, timeoutMs) as { targets: Target[]; omitted: number };
+  async lookup(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references', timeoutMs = 30_000, approvedOnly = false) {
+    return await this.request(root, editorId, path, buffers, position, kind, timeoutMs, undefined, approvedOnly) as { targets: Target[]; omitted: number };
   }
-  async inspect(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'diagnostics' | 'hover' | 'signature' | 'completion' = 'diagnostics') {
-    return await this.request(root, editorId, path, buffers, position, kind, 30_000) as Inspection;
+  async inspect(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'diagnostics' | 'hover' | 'signature' | 'completion' | 'highlights' = 'diagnostics', approvedOnly = false) {
+    return await this.request(root, editorId, path, buffers, position, kind, 30_000, undefined, approvedOnly) as Inspection;
   }
   async rename(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, newName?: string) {
     return await this.request(root, editorId, path, buffers, position, 'rename', 30_000, newName) as RenameResult;
   }
-  private async request(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'rename', timeoutMs: number, newName?: string): Promise<{ targets: Target[]; omitted: number } | Inspection | RenameResult> {
+  private async request(root: string, editorId: string, path: string, buffers: z.output<typeof buffer>[], position: z.output<typeof point>, kind: 'definition' | 'references' | 'diagnostics' | 'hover' | 'signature' | 'completion' | 'highlights' | 'rename', timeoutMs: number, newName?: string, approvedOnly = false): Promise<{ targets: Target[]; omitted: number } | Inspection | RenameResult> {
     if (this.stopped) throw new Error('Editor plugin stopped.');
     root = await realpath(root);
     let servers: ScopedServer[];
@@ -228,7 +244,11 @@ export class Languages {
     positionOffset(active.text, position);
     if (this.stopped) throw new Error('Editor plugin stopped.');
     // Another lookup can reload config while buffer paths are being resolved.
-    if (this.configs.get(root) !== JSON.stringify(servers)) return this.request(root, editorId, path, buffers, position, kind, timeoutMs, newName);
+    if (this.configs.get(root) !== JSON.stringify(servers)) return this.request(root, editorId, path, buffers, position, kind, timeoutMs, newName, approvedOnly);
+    if (approvedOnly && this.approvals.get(root) !== JSON.stringify(servers)) {
+      this.approvals.delete(root);
+      throw new Error("Approve LSP commands for diffs in the Command Center before inspecting this workspace.");
+    }
     const key = JSON.stringify([root, editorId, config]);
     let session = this.sessions.get(key);
     if (!session) {
@@ -260,5 +280,5 @@ export class Languages {
     }
     await Promise.all(closing);
   }
-  async dispose() { this.stopped = true; this.configs.clear(); clearInterval(this.sweep); const sessions = [...this.sessions.values()]; this.sessions.clear(); await Promise.all(sessions.map(session => session.dispose())); }
+  async dispose() { this.stopped = true; this.configs.clear(); this.approvals.clear(); clearInterval(this.sweep); const sessions = [...this.sessions.values()]; this.sessions.clear(); await Promise.all(sessions.map(session => session.dispose())); }
 }

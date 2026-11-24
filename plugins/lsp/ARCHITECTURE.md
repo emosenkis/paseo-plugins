@@ -73,7 +73,7 @@ A ty profile may use `command: "ty"`, `args: ["server"]`, and `languages: { "py"
 
 ## Scope and limits
 
-Private pane and editor lookup lives in `client/native.ts`: the `__reactFiber$` DOM key, native source selector, CodeMirror DOM tile, pane-context shape and native file-open request shape. Autocomplete also depends on Metro module discovery in `client/metro.ts` and `client/completion.ts`. No Paseo application checkout was modified. This was tested on 0.11.2; future updates may require changes. The plugin's sidebar item mounts the host-scoped adapter, so its selected host and visibility affect activation.
+Private pane and editor lookup lives in `client/native.ts`: the `__reactFiber$` DOM key, native source selector, CodeMirror DOM tile, pane-context shape and native file-open request shape. Working diffs also depend on the private canvas model and React hook refs in `client/diff.ts`. Autocomplete depends on Metro module discovery in `client/metro.ts` and `client/completion.ts`. No Paseo application checkout was modified. This was tested on 0.11.2; future updates may require changes. The plugin's sidebar item mounts the host-scoped adapter, so its selected host and visibility affect activation.
 
 Paseo owns dirty-buffer retention. The plugin supplies mounted buffers; other files come from the server’s disk view. Servers requiring client-driven file watchers are not supported yet. Workspace-external locations are omitted, with no traversal or reading of those targets. Limits: 30 buffers, 2 MiB per buffer, 8 MiB total, 500 unique targets, 30-second request deadline and five-minute idle eviction. Windows lacks the POSIX process-group termination behavior. Mobile is not supported.
 
@@ -91,3 +91,19 @@ The local HTTP harness is not shipped, validates its HTTP origin/workspace, and 
 - https://docs.basedpyright.com/latest/installation/command-line-and-language-server/
 - https://docs.astral.sh/ty/editors/
 - https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/
+
+The canvas working-diff adapter reads the native model and horizontal offsets from React hook refs. It maps pointer coordinates through rows, columns and measured graphemes to UTF-16 positions, accepting only new-side cells. Hover and signature help use a separate inspection session; navigation uses native file opening and the existing results panel. Requests include the displayed source line, never partial hunk overlays. The server hydrates the full active file within the existing workspace/size boundaries and rejects mismatched lines, preferring mounted unsaved buffers. Model or buffer changes invalidate pending results. This line check does not establish that the entire diff matches the workspace. Private model/ref shapes may require updates after Paseo changes.
+
+Run `npm run browser-harness -- --diff` and `await window.proof.run()` at the printed URL for the standalone canvas event regression. The fixture uses the native canvas’s `pointer-events: none` and browser hit testing plus the unwrapped diff’s horizontal-scroll spacer, so hover/click events reach its content layers rather than being dispatched directly to the canvas. It checks hover, signatures, F12, Shift+F12 and disposal without daemon RPCs.
+
+Live verification: in the real hosted Paseo client connected to the local daemon, hover over the DiffIntelligence declaration in this workspace’s working diff showed its class type, F12 opened plugins/lsp/client/diff.ts, and Shift+F12 returned 10 references. Unlike the fixture, this exercised the installed plugin, native diff overlays and live language server together.
+
+Occurrence highlighting uses `textDocument/documentHighlight`, gated by `documentHighlightProvider`, and returns up to 1,000 validated ranges. Native editors reuse CSS Custom Highlights and viewport DOM ranges; canvas diffs map the same LSP ranges through new-side cells and measured graphemes into clipped, non-interactive overlays. Caret/model/buffer changes invalidate pending results. TypeScript and Python integration tests distinguish scoped symbols with identical spelling. Live browser verification rendered four DiffIntelligence occurrences in each view; editor automation simulated document focus for the background webview.
+
+Diff-origin navigation resolves targets against the current canvas model before using the native editor fallback. It expands collapsed files only when the target falls within a new-side hunk, scrolls offscreen rows into the materialization window, and uses measured fragments for wrapped positions. The destination becomes the selected LSP position for subsequent jumps. Results retain this routing callback and reselect the originating diff tab when needed. A missing/unavailable new-side line falls back to native file opening.
+
+## Working-diff command approval
+
+Diff RPC handlers mark lookup and inspection requests as approval-only. `Languages` compares the current canonical workspace configuration with a daemon-memory approval immediately before session creation or reuse, including recursive config reconciliation. A workspace Command Center action displays the full resolved config and submits its exact snapshot only after confirmation. Approval rejects a changed snapshot and never launches a process. Parsed config changes invalidate diff access; plugin disposal clears approvals. Editor requests keep their previous behavior.
+
+Approval uses a bounded, scrollable in-app dialog with Cancel focused by default. `window.proof.approvalChecks()` in the browser harness checks text-only command rendering, modal focus, Cancel, Escape, explicit approval, and cleanup. Desktop, compact, and dark fixture screenshots exercise long command lists without hiding the action buttons.

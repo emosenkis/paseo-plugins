@@ -6,6 +6,7 @@ import { NativeNavigation, nativeEditors } from '../client/native.ts';
 import { Intelligence } from '../client/intelligence.ts';
 import { ResultsPanel } from '../client/results-panel.tsx';
 import { renameReview } from '../client/rename.ts';
+import { confirmDiffCommands, cancelDiffCommands } from '../client/web.ts';
 import { getResults, getHistory } from '../client/results.ts';
 import type { EditorApi } from '../shared/contracts.ts';
 
@@ -87,15 +88,14 @@ async function runChecks() {
   assert(opened.includes(base + 'symbol.py'), 'Did not use native openFileInWorkspace callback');
   assert(getResults(hostId, workspaceId!)?.title.includes('“greet”'), 'Missing queried symbol');
   checks.push('Python F12 opens a native tab and selects the symbol');
-  const historyKey = (view: EditorView, key: string) => view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true }));
   const origin = usage.view.state.selection.main.head;
   assert(getHistory(hostId, workspaceId!)?.targets.length === 2, 'Missing origin/destination history');
-  historyKey(find('symbol.py')!.view, 'ArrowLeft');
-  await until(() => getHistory(hostId, workspaceId!)?.index === 0, 'history back');
-  assert(usage.view.state.selection.main.head === origin, 'Back lost source caret');
-  historyKey(usage.view, 'ArrowRight');
-  await until(() => getHistory(hostId, workspaceId!)?.index === 1 && selected('symbol.py', 'greet'), 'history forward');
-  checks.push('Alt+Left/Right restores source caret and destination selection');
+  for (const modifier of ['altKey', 'ctrlKey']) for (const key of ['ArrowLeft', 'ArrowRight']) {
+    const event = new KeyboardEvent('keydown', { key, [modifier]: true, bubbles: true, cancelable: true });
+    find('symbol.py')!.view.contentDOM.dispatchEvent(event);
+    assert(!event.defaultPrevented && getHistory(hostId, workspaceId!)?.index === 1, 'Arrow shortcut intercepted text navigation');
+  }
+  checks.push('Ctrl/Alt+Left/Right remain available for text navigation');
   const side = (view: EditorView, button: number) => view.contentDOM.dispatchEvent(new MouseEvent('mousedown', { button, bubbles: true, cancelable: true }));
   side(find('symbol.py')!.view, 3);
   const release = () => { const event = new MouseEvent('mouseup', { button: 3, bubbles: true, cancelable: true }); document.body.dispatchEvent(event); return event.defaultPrevented; };
@@ -275,4 +275,21 @@ async function renameReviewChecks() {
   if (!await next.result || document.querySelector('dialog[aria-label="Review rename changes"]')) throw new Error('Confirm did not finish review');
   return ['all proposed file diffs shown', 'diff tab action retains review', 'cancel and confirm resolve correctly'];
 }
-Object.assign(window, { proof: { runChecks, diagnosticsChecks, hoverChecks, signatureChecks, renameReviewChecks, dispose: async () => { await adapter.dispose(); root.unmount(); } } });
+async function approvalChecks() {
+  const snapshot = JSON.stringify([{ command: 'node', args: ['server.js', '<script>'], root: '/workspace' }]);
+  const show = () => confirmDiffCommands('Approval test', snapshot);
+  const dialog = () => document.querySelector<HTMLDialogElement>('dialog[data-lsp-approval]')!;
+  const pending = show();
+  if (!dialog().open || !dialog().matches(':modal') || document.activeElement?.textContent !== 'Cancel') throw new Error('Approval must open modally with Cancel focused');
+  if (!dialog().querySelector('pre')?.textContent?.includes('<script>') || dialog().querySelector('script')) throw new Error('Commands must be displayed as text');
+  dialog().querySelector('button')!.click();
+  if (await pending || dialog()) throw new Error('Cancel must deny approval and remove the dialog');
+  const escaped = show(); dialog().dispatchEvent(new Event('cancel', { cancelable: true }));
+  if (await escaped) throw new Error('Escape must deny approval');
+  const approved = show(); dialog().querySelectorAll<HTMLButtonElement>('button')[1].click();
+  if (!await approved || dialog()) throw new Error('Explicit approval must finish and remove the dialog');
+  const disposed = show(); cancelDiffCommands();
+  if (await disposed || dialog()) throw new Error('Plugin cleanup must cancel approval');
+  return ['commands rendered as text', 'Cancel focused', 'Cancel and Escape deny', 'explicit approval succeeds', 'cleanup denies'];
+}
+Object.assign(window, { proof: { runChecks, diagnosticsChecks, hoverChecks, signatureChecks, renameReviewChecks, approvalChecks, showApproval: confirmDiffCommands, cancelApproval: cancelDiffCommands, dispose: async () => { await adapter.dispose(); root.unmount(); } } });

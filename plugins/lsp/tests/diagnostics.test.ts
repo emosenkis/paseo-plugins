@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Languages } from '../server/languages.ts';
 
-for (const extension of ['py', 'ts']) test(`${extension} diagnostics, hover and signature help follow unsaved buffers`, { timeout: 30_000 }, async () => {
+for (const extension of ['py', 'ts']) test(`${extension} diagnostics, hover, signatures and semantic highlights follow unsaved buffers`, { timeout: 30_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'paseo-diagnostics-'));
   const languages = new Languages();
   const path = `example.${extension}`;
@@ -46,6 +46,16 @@ for (const extension of ['py', 'ts']) test(`${extension} diagnostics, hover and 
     assert.ok(signature.label.includes('count'), JSON.stringify(signature));
     assert.ok(signature.parameter, 'Missing active parameter');
     assert.ok(signature.label.slice(...signature.parameter).includes('count'), JSON.stringify(signature));
+    buffers[0].text = python
+      ? 'value = 1\nprint(value)\ndef other(value: int):\n    return value\n'
+      : 'const value = 1;\nconsole.log(value);\nfunction other(value: number) { return value; }\n';
+    const occurrences = (await languages.inspect(root, 'diagnostics', path, buffers, { line: 1, character: python ? 7 : 14 }, 'highlights')).highlights;
+    assert.equal(occurrences?.length, 2, 'Expected declaration and usage, excluding shadowed parameters');
+    assert.deepEqual(occurrences?.map(range => range.start.line).sort(), [0, 1]);
+    const scoped = (await languages.inspect(root, 'diagnostics', path, buffers, { line: 2, character: python ? 11 : 17 }, 'highlights')).highlights;
+    assert.equal(scoped?.length, 2, 'Expected parameter and scoped usage only');
+    assert.ok(scoped?.every(range => range.start.line >= 2));
+
   } finally { await languages.dispose(); await rm(root, { recursive: true, force: true }); }
 });
 

@@ -22,9 +22,38 @@ test("cleanup always releases the inhibitor", () => {
 });
 
 test("selects the native inhibitor for each OS", () => {
-  assert.deepEqual(inhibitorCommand("darwin"), ["caffeinate", ["-dimsu"]]);
-  assert.equal(inhibitorCommand("linux")[0], "systemd-inhibit");
+  assert.deepEqual(inhibitorCommand("darwin"), ["caffeinate", ["-is"]]);
+  assert.deepEqual(inhibitorCommand("linux")[1].slice(0, 1), ["--what=sleep"]);
   const [command, args] = inhibitorCommand("win32");
   assert.equal(command, "powershell.exe");
-  assert.match(args[3], /SetThreadExecutionState/);
+  assert.match(args[3], /SetThreadExecutionState\(0x80000001\)/);
+});
+
+
+test("manual keep awake survives agent completion and releases when switched off", () => {
+  const events: string[] = [];
+  const monitor = createMonitor(() => events.push("awake"), () => events.push("idle"));
+  monitor.setManual(true);
+  monitor.setManual(true);
+  monitor.started("a");
+  monitor.ended("a");
+  assert.equal(monitor.manual, true);
+  assert.deepEqual(events, ["awake"]);
+  monitor.setManual(false);
+  assert.deepEqual(events, ["awake", "idle"]);
+});
+
+test("switching manual off preserves running agents and cleanup clears manual mode", () => {
+  const events: string[] = [];
+  const monitor = createMonitor(() => events.push("awake"), () => events.push("idle"));
+  monitor.setManual(true);
+  monitor.started("a");
+  monitor.setManual(false);
+  assert.deepEqual(events, ["awake"]);
+  monitor.ended("a");
+  assert.deepEqual(events, ["awake", "idle"]);
+  monitor.setManual(true);
+  monitor.cleanup();
+  assert.equal(monitor.manual, false);
+  assert.deepEqual(events, ["awake", "idle", "awake", "idle"]);
 });

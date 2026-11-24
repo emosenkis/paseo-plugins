@@ -32,7 +32,7 @@ export function ResultsPanel({ host, workspaceId, theme, layout }: PluginWorkspa
           const index = (history?.index ?? -1) + direction;
           const disabled = !history || index < 0 || index >= history.targets.length;
           return <Pressable key={direction} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled}
-            accessibilityLabel={direction < 0 ? 'Back (Alt+Left)' : 'Forward (Alt+Right)'}
+            accessibilityLabel={direction < 0 ? 'Back' : 'Forward'}
             onPress={() => history?.open(index)} style={{ padding: 6, opacity: disabled ? 0.4 : 1 }}>
             <Text style={{ color: colors.foreground }}>{direction < 0 ? '← Back' : 'Forward →'}</Text>
           </Pressable>;

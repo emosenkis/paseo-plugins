@@ -14,7 +14,10 @@ paseo plugin install .
 
 ## Agent keep-awake
 
-`agent-keep-awake` prevents system sleep while any agent turn is running. It uses
+`agent-keep-awake` prevents system sleep while any agent turn is running. The **Keep awake**
+sidebar footer switch also keeps the host awake without running agents. Turning it off
+restores automatic behavior. Screen locking and display power-off remain available.
+The manual switch resets when the plugin or daemon restarts. Requires Paseo 0.11.2 or later. It uses
 `caffeinate` on macOS, `systemd-inhibit` on Linux, and `SetThreadExecutionState` through
 PowerShell on Windows.
 
@@ -26,8 +29,13 @@ paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/agen
 
 ## LSP
 
-Code navigation, autocomplete, and symbol rename for Paseo's file editor. See [the plugin overview](plugins/lsp/OVERVIEW.md)
+Code navigation, autocomplete, and symbol rename for Paseo's file editor. Working diffs
+also support hover, signature help, symbol highlights, and definition/reference jumps. See [the plugin overview](plugins/lsp/OVERVIEW.md)
 for configuration and supported language servers.
+Before using LSP in working diffs, run **Approve LSP commands for diffs** in the
+Command Center and review the host commands. Approval expires when the configuration
+changes or the plugin reloads.
+
 See [example configurations](plugins/lsp/examples/README.md) for a ready-to-use TypeScript setup.
 Use **Restart LSP servers** in the Command Center after changing server tooling.
 
@@ -46,7 +54,7 @@ The TypeScript server uses the latest TypeScript 6 release because TypeScript 7 
 ships the `tsserver` it requires. The explicit `tsserver` path resolves from pnpx's environment.
 
 Synced from [Covered-Health/paseo-plugins](https://github.com/Covered-Health/paseo-plugins) through
-`484d095450a275f9589d73996f4961bb2d636aaa`. Copyright (c) 2026 Protego Health; MIT licensed.
+`adec59b2f8bc7bc4f1afa9a6c17947308549dddc`. Copyright (c) 2026 Protego Health; MIT licensed.
 
 ```shell
 paseo plugin install https://github.com/emosenkis/paseo-plugins.git:plugins/lsp

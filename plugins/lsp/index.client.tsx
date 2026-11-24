@@ -1,10 +1,20 @@
 import type { PluginClientContext, PluginSidebarItemProps } from '@getpaseo/plugin/client';
 import { NativeInstaller, disposeNative } from './client/native-installer.tsx';
-import { restart } from './shared/contracts.ts';
+import { restart, approveDiffCommands } from './shared/contracts.ts';
 import { ResultsPanel } from './client/results-panel.tsx';
 import { RenamePanel } from './client/rename-panel.tsx';
+import { confirmDiffCommands, cancelDiffCommands } from './client/web.ts';
 
 export default function contribute(client: PluginClientContext) {
+  const removeApproval = client.addCommandCenterItem({
+    id: 'approve-diff-lsp', title: 'Approve LSP commands for diffs', icon: 'ShieldCheck', context: 'workspace',
+    async onSelect({ workspace, rpc }) {
+      const { snapshot } = await rpc(approveDiffCommands, { workspaceId: workspace.id });
+      if (await confirmDiffCommands(workspace.title ?? workspace.id, snapshot)) {
+        await rpc(approveDiffCommands, { workspaceId: workspace.id, approved: snapshot });
+      }
+    },
+  });
   const removeRestart = client.addCommandCenterItem({
     id: 'restart-lsp', title: 'Restart LSP servers', icon: 'RotateCw', context: 'workspace',
     async onSelect({ workspace, rpc }) { await rpc(restart, { workspaceId: workspace.id }); },
@@ -15,5 +25,5 @@ export default function contribute(client: PluginClientContext) {
     return <NativeInstaller {...props} openResults={workspaceId => client.openPanel('navigation', { workspaceId, location: 'explorer' })} openDiff={workspaceId => client.openPanel('rename-diff', { workspaceId, location: 'workspace' })} />;
   }
   const remove = client.addSidebarFooterItem({ id: 'native-navigation', title: 'Native code navigation', Component: Installer });
-  return async () => { await disposeNative(); remove(); removePanel(); removeRename(); removeRestart(); };
+  return async () => { cancelDiffCommands(); await disposeNative(); remove(); removePanel(); removeRename(); removeRestart(); removeApproval(); };
 }
